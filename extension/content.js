@@ -183,7 +183,8 @@ function seek(f) {
     dvr = pre;
     pre = null;
     Object.assign(dvr, { volume: tv.volume, muted: tv.muted });
-    tv.after(dvr);
+    // First video on the page, so add-ons' PiP buttons (querySelector('video')) pick it
+    tv.before(dvr);
     holdLive(tv);
     if (playing) dvr.play().catch(() => {});
   }
@@ -214,9 +215,9 @@ function tick() {
     startedAt = vodUrl = variants = pre = watched = null;
     load(name);
   }
-  // Leftmost of the top nav's right-hand icons, on live channels with VODs only
+  // Leftmost of the top nav's right-hand icons, on live channels only
   const nav = document.querySelector('.top-nav__menu > :last-child');
-  if (!vodUrl || !nav) toggle.remove();
+  if (!startedAt || !nav) toggle.remove();
   else if (toggle.parentElement !== nav) nav.prepend(toggle);
   const enabled = !off.has(channel);
   toggle.classList.toggle('tt-off', !enabled);

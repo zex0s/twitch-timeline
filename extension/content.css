@@ -292,3 +292,5 @@
   height: 100%;
   background: #000;
 }
+/* Twitch's paused live video, which the rewound one is inserted before */
+.tt-video ~ video { visibility: hidden; }
