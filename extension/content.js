@@ -108,7 +108,7 @@ async function load(name) {
     'query($id:ID!){videoPlaybackAccessToken(id:$id,params:{platform:"web",playerBackend:"mediaplayer",playerType:"site"}){value signature}}',
     { id },
   ).catch(() => null))?.videoPlaybackAccessToken;
-  // The in-progress VOD is an EVENT playlist that keeps growing.
+  // Safari plays HLS natively; the in-progress VOD is an EVENT playlist that keeps growing.
   if (name !== channel || !t) return;
   vodUrl = `https://usher.ttvnw.net/vod/${id}.m3u8?` + new URLSearchParams({ sig: t.signature, token: t.value, allow_source: 'true' });
   // Quality variants, best first, known by group ID ("720p60", "chunked") and
@@ -127,8 +127,8 @@ async function load(name) {
 }
 
 // The VOD playlist for the quality picked in Twitch's player settings.
-// Auto plays the master playlist so the player adapts; a fixed one plays that
-// variant directly so it can't drop below it.
+// Auto plays the master playlist so Safari adapts; a fixed one plays that
+// variant directly so Safari can't drop below it.
 function qualityUrl() {
   let q;
   try { q = JSON.parse(localStorage.getItem('video-quality'))?.default; } catch {}
@@ -136,51 +136,9 @@ function qualityUrl() {
   return (variants.find(v => v.ids.includes(q)) || variants.find(v => v.height && v.height <= parseInt(q)) || variants[0]).url;
 }
 
-// The Safari extension plays HLS natively. The userscript @requires hls.js and
-// always uses it: Chrome's native HLS treats the growing VOD as live (no
-// duration, nothing seekable) and Firefox has none.
-const useHlsJs = typeof Hls !== 'undefined' && Hls.isSupported();
-
-// Points v at a playlist, starting at `start` seconds if given
-function setSource(v, url, start) {
-  v.ttSrc = url;
-  if (start != null) v.ttWant = start;
-  if (!useHlsJs) {
-    v.src = url;
-    if (start != null) v.currentTime = start;
-    return;
-  }
-  v.ttHls?.destroy();
-  // No worker: Twitch's CSP may block blob: workers
-  v.ttHls = new Hls({ enableWorker: false, startPosition: start ?? 0 });
-  v.ttHls.loadSource(url);
-  v.ttHls.attachMedia(v);
-}
-
-function seekTo(v, t) {
-  v.ttWant = t;
-  // hls.js can't seek before it has loaded; restart its loading at t instead
-  if (v.ttHls && v.readyState === HTMLMediaElement.HAVE_NOTHING) v.ttHls.startLoad(t);
-  else v.currentTime = t;
-}
-
-function newVideo(src, start) {
-  const v = Object.assign(document.createElement('video'), { className: 'tt-video', playsInline: true, preload: 'auto' });
-  v.onplay = () => movedAt = Date.now(); // no spinner flash on resume
-  // Chrome ignores a seek made before metadata and starts at 0; redo it then
-  v.onloadedmetadata = () => {
-    if (v.ttWant != null && Math.abs(v.currentTime - v.ttWant) > 2) v.currentTime = v.ttWant;
-  };
-  setSource(v, src, start);
-  return v;
-}
-
 function unload(v) {
-  if (!v) return;
-  v.ttHls?.destroy();
-  v.ttHls = null;
-  v.removeAttribute('src');
-  v.load();
+  v?.removeAttribute('src');
+  v?.load();
 }
 
 function prepare() {
@@ -189,9 +147,9 @@ function prepare() {
     unload(pre);
     pre = null;
   }
-  // hls.js would start loading at the VOD's start, so it waits for the click instead
-  if (pre || dvr || !src || useHlsJs) return;
-  pre = newVideo(src);
+  if (pre || dvr || !src) return;
+  pre = Object.assign(document.createElement('video'), { className: 'tt-video', playsInline: true, preload: 'auto', src, ttSrc: src });
+  pre.onplay = () => movedAt = Date.now(); // no spinner flash on resume
 }
 
 // Live audio is routed through a gain node so Twitch's own volume/mute
@@ -214,7 +172,7 @@ function seek(f) {
   if (!dvr) {
     const tv = twitchVideo();
     prepare();
-    dvr = pre || newVideo(qualityUrl(), target);
+    dvr = pre;
     pre = null;
     Object.assign(dvr, { volume: tv.volume, muted: tv.muted });
     tv.after(dvr);
@@ -225,8 +183,7 @@ function seek(f) {
   // live edge a little, so clamp to what's available.
   const end = dvr.seekable.length ? dvr.seekable.end(0) - 10 : target;
   const pos = Math.min(target, end);
-  seekTo(dvr, pos);
-  lastTime = watched = pos; // shows the clicked spot until it plays
+  dvr.currentTime = lastTime = watched = pos; // shows the clicked spot until it plays
 }
 
 function goLive() {
@@ -273,8 +230,9 @@ function tick() {
     // Quality changed in Twitch's settings: same spot, new variant
     const src = qualityUrl();
     if (src !== dvr.ttSrc) {
-      const playing = !dvr.paused;
-      setSource(dvr, src, dvr.currentTime);
+      const t = dvr.currentTime, playing = !dvr.paused;
+      dvr.src = dvr.ttSrc = src;
+      dvr.currentTime = t;
       if (playing) dvr.play().catch(() => {});
     }
     // Moving position = playing (Safari's HLS readyState isn't reliable for that)
@@ -286,9 +244,9 @@ function tick() {
     if (dvr.paused || Date.now() - movedAt < 400) spinner.remove();
     else if (spinner.previousSibling !== dvr) dvr.after(spinner);
   } else if (startedAt && (watched == null || !twitchVideo()?.paused)) watched = uptime();
-  const controls = [...document.querySelectorAll('.video-player .player-controls')].find(c => c.offsetHeight);
-  if (!startedAt || !controls) return bar.remove();
-  if (bar.parentElement !== controls) controls.append(bar);
+  const overlay = [...document.querySelectorAll('.video-player .video-player__overlay')].find(o => o.offsetHeight);
+  if (!startedAt || !overlay) return bar.remove();
+  if (bar.parentElement !== overlay) overlay.append(bar);
   bar.classList.toggle('tt-dvr', !!dvr);
   time.textContent = fmt(watched, true);
   fill.style.width = knob.style.left = Math.min(100, (watched / uptime()) * 100) + '%';

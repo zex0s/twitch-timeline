@@ -1,13 +1,26 @@
-.player-controls:has(.tt-bar) { position: relative; }
-
+/* Lives in the player overlay, not inside Twitch's controls: a channel's
+   Twitch Extension overlay (an iframe over the video) would cover it there
+   and take its clicks. z-index 1 puts it above that iframe. */
 .tt-bar {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(100% - 10px); /* line sits on the controls' top edge, like Twitch's */
+  bottom: 40px; /* line sits on the 50px controls' top edge, like Twitch's */
+  z-index: 1;
   padding: 0 16px 4px;
   color: #fff;
   font-family: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+/* Shown with Twitch's controls. An extension iframe hides mouse movement
+   from Twitch, so on those channels it shows while the player is hovered. */
+.video-player__default-player:not(.video-player__inactive) .tt-bar,
+.video-player:hover:has(.extension-view__iframe) .tt-bar,
+.tt-bar:hover {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .tt-row {
