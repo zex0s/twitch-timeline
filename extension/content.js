@@ -173,6 +173,14 @@ function holdLive(tv) {
   tv.pause();
 }
 
+// PiP buttons from Twitch add-ons (Purple Crow's .tp-pip-btn) PiP Twitch's
+// paused live video; while rewound, PiP the rewound video instead.
+addEventListener('click', e => {
+  if (!dvr || !e.target.closest?.('.tp-pip-btn')) return;
+  e.stopImmediatePropagation();
+  (document.pictureInPictureElement ? document.exitPictureInPicture() : dvr.requestPictureInPicture()).catch(() => {});
+}, true);
+
 function seek(f) {
   if (f > 0.995 || !vodUrl) return goLive();
   const target = f * uptime();
@@ -197,6 +205,8 @@ function seek(f) {
 
 function goLive() {
   if (!dvr) return;
+  // Keep PiP open, now on the live video (removing the rewound one closes it)
+  if (document.pictureInPictureElement === dvr) twitchVideo()?.requestPictureInPicture().catch(() => {});
   dvr.pause();
   dvr.remove();
   spinner.remove();
