@@ -85,6 +85,15 @@ const twitchVideo = () => document.querySelector('.video-ref video:not(.tt-video
 // (VOD time = stream time: its playlist's length matches uptime to within ~2s.)
 let watched, lastTime, movedAt = 0;
 
+// Last mouse movement, and whether it was over the player, for hiding the
+// controls while rewound (see tt-idle in tick)
+let mouseAt = 0, overPlayer = false;
+addEventListener('mousemove', e => {
+  mouseAt = Date.now();
+  overPlayer = !!e.target.closest?.('.video-player');
+}, true);
+document.documentElement.addEventListener('mouseleave', () => overPlayer = false);
+
 const spinner = document.createElement('div');
 spinner.className = 'tt-spinner';
 
@@ -212,7 +221,7 @@ function goLive() {
   spinner.remove();
   pre = dvr; // keep it loaded so the next rewind is instant
   dvr = watched = null;
-  document.documentElement.classList.remove('tt-playing');
+  document.documentElement.classList.remove('tt-playing', 'tt-idle');
   twitchVideo()?.play().catch(() => {});
 }
 
@@ -251,6 +260,10 @@ function tick() {
     if (tv && (!tv.ttHooked || !tv.paused)) holdLive(tv);
     // Twitch's button shows "play" since live is paused; show the rewound video's state
     document.documentElement.classList.toggle('tt-playing', !dvr.paused);
+    // Twitch only hides its controls while its own video plays; do it for the
+    // rewound one like Twitch does: 5s without moving the mouse, or mouse off the player
+    const onControls = document.querySelector('.video-player .player-controls:hover, .video-player .top-bar:hover, .tt-bar:hover');
+    document.documentElement.classList.toggle('tt-idle', !dvr.paused && !onControls && (!overPlayer || Date.now() - mouseAt > 5000));
     // Quality changed in Twitch's settings: same spot, new variant
     const src = qualityUrl();
     if (src !== dvr.ttSrc) {

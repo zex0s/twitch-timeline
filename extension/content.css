@@ -268,6 +268,15 @@
   pointer-events: none;
 }
 
+/* Rewound and idle: hide Twitch's top bar and controls (the overlay's fade
+   wrappers), the timeline and the cursor, as Twitch does while playing */
+.tt-idle .video-player__overlay > .tw-transition,
+.tt-idle .tt-bar {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.tt-idle .video-player * { cursor: none !important; }
+
 /* Loading spinner over the rewound video, like Twitch's */
 .tt-spinner {
   position: absolute;
