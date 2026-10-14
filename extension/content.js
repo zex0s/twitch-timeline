@@ -152,18 +152,21 @@ function prepare() {
   pre.onplay = () => movedAt = Date.now(); // no spinner flash on resume
 }
 
-// Live audio is routed through a gain node so Twitch's own volume/mute
-// controls keep working (we mirror them) while the live feed is silent.
-function liveAudio(tv, on) {
-  if (!tv.ttGain) {
-    const ctx = new AudioContext();
-    tv.ttGain = ctx.createGain();
-    ctx.createMediaElementSource(tv).connect(tv.ttGain).connect(ctx.destination);
-    tv.addEventListener('play', () => dvr?.play());
-    tv.addEventListener('pause', () => dvr?.pause());
+// While rewound, Twitch's live video is paused, so it stops playing and
+// loading. Twitch's play/pause controls (button, clicking the video, space/k)
+// then call play() on it: that toggles the rewound video instead and the live
+// one is paused again. Its volume and mute are mirrored onto the rewound video.
+function holdLive(tv) {
+  if (!tv.ttHooked) {
+    tv.ttHooked = true;
+    tv.addEventListener('play', () => {
+      if (!dvr) return;
+      tv.pause();
+      dvr.paused ? dvr.play().catch(() => {}) : dvr.pause();
+    });
     tv.addEventListener('volumechange', () => dvr && Object.assign(dvr, { volume: tv.volume, muted: tv.muted }));
   }
-  tv.ttGain.gain.value = on ? 1 : 0;
+  tv.pause();
 }
 
 function seek(f) {
@@ -171,13 +174,14 @@ function seek(f) {
   const target = f * uptime();
   if (!dvr) {
     const tv = twitchVideo();
+    const playing = !tv.paused;
     prepare();
     dvr = pre;
     pre = null;
     Object.assign(dvr, { volume: tv.volume, muted: tv.muted });
     tv.after(dvr);
-    liveAudio(tv, false);
-    if (!tv.paused) dvr.play().catch(() => {});
+    holdLive(tv);
+    if (playing) dvr.play().catch(() => {});
   }
   // Seeking right after src is set is fastest in Safari. The VOD trails the
   // live edge a little, so clamp to what's available.
@@ -193,8 +197,8 @@ function goLive() {
   spinner.remove();
   pre = dvr; // keep it loaded so the next rewind is instant
   dvr = watched = null;
-  const tv = twitchVideo();
-  if (tv?.ttGain) liveAudio(tv, true);
+  document.documentElement.classList.remove('tt-playing');
+  twitchVideo()?.play().catch(() => {});
 }
 
 function tick() {
@@ -227,6 +231,11 @@ function tick() {
     notice.classList.remove('tt-open');
   } else if (notice.parentElement !== input) input.prepend(notice);
   if (dvr) {
+    // Keep live held, also if Twitch swaps in a new video element
+    const tv = twitchVideo();
+    if (tv && (!tv.ttHooked || !tv.paused)) holdLive(tv);
+    // Twitch's button shows "play" since live is paused; show the rewound video's state
+    document.documentElement.classList.toggle('tt-playing', !dvr.paused);
     // Quality changed in Twitch's settings: same spot, new variant
     const src = qualityUrl();
     if (src !== dvr.ttSrc) {

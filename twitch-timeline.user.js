@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch Timeline
 // @namespace    https://github.com/zex0s/twitch-timeline
-// @version      1.0.1
+// @version      1.0.2
 // @description  Rewind live Twitch streams: a timeline under the player, Skip to Live, and a "Chat is Live" notice.
 // @author       zex0s
 // @match        https://www.twitch.tv/*
@@ -17,7 +17,7 @@
 // HLS natively instead of with hls.js. Keep fixes in sync by hand.
 (() => {
 const style = document.createElement('style');
-style.textContent = "/* Lives in the player overlay, not inside Twitch's controls: a channel's\n   Twitch Extension overlay (an iframe over the video) would cover it there\n   and take its clicks. z-index 1 puts it above that iframe. */\n.tt-bar {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: 40px; /* line sits on the 50px controls' top edge, like Twitch's */\n  z-index: 1;\n  padding: 0 16px 4px;\n  color: #fff;\n  font-family: inherit;\n  opacity: 0;\n  pointer-events: none;\n  transition: opacity 0.2s;\n}\n/* Shown with Twitch's controls. An extension iframe hides mouse movement\n   from Twitch, so on those channels it shows while the player is hovered. */\n.video-player__default-player:not(.video-player__inactive) .tt-bar,\n.video-player:hover:has(.extension-view__iframe) .tt-bar,\n.tt-bar:hover {\n  opacity: 1;\n  pointer-events: auto;\n}\n\n.tt-row {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  height: 19px;\n  margin-bottom: 3px;\n}\n\n.tt-time,\n.tt-tip {\n  font-size: 14px;\n  font-weight: 400;\n  line-height: 18px;\n  font-variant-numeric: tabular-nums;\n}\n.tt-time { text-shadow: 0 0 2px rgba(0, 0, 0, 0.4); }\n\n/* Hover time */\n.tt-tip {\n  padding: 0 6px;\n  border: 1px solid rgba(255, 255, 255, 0.15);\n  border-radius: 6px;\n  background: rgba(0, 0, 0, 0.55);\n  text-shadow: none;\n}\n.tt-tip {\n  display: none;\n  position: absolute;\n  top: 0;\n  transform: translateX(-50%);\n  white-space: nowrap;\n  pointer-events: none;\n}\n.tt-bar:has(.tt-track-wrap:hover) .tt-tip { display: block; }\n\n.tt-live {\n  position: relative;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  height: 19px;\n  border: 0;\n  border-radius: 5px;\n  padding: 0 6px;\n  background: #eb0400;\n  color: #fff;\n  font-family: inherit;\n  font-size: 13px;\n  font-weight: 600;\n  line-height: 1;\n  cursor: default;\n}\n.tt-live svg { display: none; }\n\n.tt-track-wrap {\n  display: flex;\n  align-items: center;\n  height: 14px;\n  cursor: pointer;\n}\n.tt-track {\n  position: relative;\n  flex: 1;\n  height: 4px;\n  border-radius: 2px;\n  background: rgba(255, 255, 255, 0.3);\n}\n.tt-fill {\n  height: 100%;\n  border-radius: 2px;\n  background: #a970ff;\n}\n.tt-knob {\n  display: none;\n  position: absolute;\n  top: 50%;\n  width: 14px;\n  height: 14px;\n  border-radius: 50%;\n  background: #fff;\n  transform: translate(-50%, -50%);\n}\n.tt-track-wrap:hover .tt-knob { display: block; }\n/* Sits inside the track's right end so the track keeps the same width in\n   both modes; otherwise the first click from live lands off by its width. */\n.tt-dot {\n  display: none;\n  position: absolute;\n  top: 50%;\n  right: 0;\n  transform: translateY(-50%);\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  background: #eb0400;\n}\n\n/* Behind live */\n.tt-dvr .tt-live {\n  gap: 8px;\n  padding: 0 7px 0 4px;\n  border-radius: 4px;\n  background: #323239;\n  color: #efeff1;\n  font-weight: 700;\n  cursor: pointer;\n}\n.tt-dvr .tt-live svg { display: block; }\n.tt-dvr .tt-dot { display: block; }\n.tt-dvr .tt-track { background: linear-gradient(to right, rgba(255, 255, 255, 0.3) calc(100% - 16px), transparent 0); }\n\n.tt-dvr .tt-live:hover::after,\n.tt-dvr .tt-live:hover::before {\n  content: \"\";\n  position: absolute;\n  pointer-events: none;\n}\n/* Right-aligned to the button so it can't run off the player's edge */\n.tt-dvr .tt-live:hover::after {\n  content: attr(data-tip);\n  right: 0;\n  bottom: calc(100% + 9px);\n  padding: 4px 8px;\n  border-radius: 4px;\n  background: #fff;\n  color: #0e0e10;\n  font-size: 13px;\n  font-weight: 600;\n  line-height: 1.2;\n  letter-spacing: 0;\n  white-space: nowrap;\n}\n.tt-dvr .tt-live:hover::before {\n  left: 50%;\n  bottom: calc(100% + 1px);\n  transform: translateX(-50%);\n  border: 4px solid transparent;\n  border-top-color: #fff;\n}\n\n/* \"Chat is Live\" notice */\n.tt-notice {\n  margin-bottom: -5px; /* tucked under the message box, which sits above it */\n  border: 1px solid #3c3c44;\n  border-radius: 8px;\n  padding: 7px 10px 9px 9px;\n  background: #26262c;\n  color: #d3d3d9;\n  font-size: 15px;\n  line-height: 20px;\n}\n.tt-notice.tt-open {\n  border-color: #34343c;\n  background: #18181b;\n  color: #efeff1;\n  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);\n}\n.tt-notice-head {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.tt-notice button {\n  display: flex;\n  border: 0;\n  padding: 0;\n  background: none;\n  color: inherit;\n  cursor: pointer;\n}\n.tt-open .tt-notice-info { color: #0e9bd8; cursor: default; }\n.tt-notice-title { flex: 1; font-weight: 700; }\n.tt-notice-close,\n.tt-notice-body { display: none !important; }\n.tt-open .tt-notice-close { display: flex !important; }\n.tt-open .tt-notice-body { display: block !important; }\n.tt-notice-body { margin: 4px 0 7px 30px; }\n.tt-notice-link { color: #bf94ff; text-decoration: underline; }\n.tt-notice-link:hover { color: #d1b3ff; }\n\n/* Top-nav on/off toggle, sized like Twitch's own nav icons */\n.tt-toggle {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  width: 32px;\n  height: 32px;\n  margin: 0 4px;\n  border: 0;\n  border-radius: 50%;\n  padding: 0;\n  background: none;\n  color: #efeff1;\n  cursor: pointer;\n}\n.tt-toggle:hover { background: rgba(83, 83, 95, 0.48); }\n.tt-toggle .tt-slash { display: none; }\n.tt-toggle.tt-off { color: #adadb8; }\n.tt-toggle.tt-off .tt-slash { display: inline; }\n/* Tooltip measured off Twitch's own nav tooltips: 14px semibold, 5px arrow */\n.tt-toggle:hover::after,\n.tt-toggle:hover::before {\n  position: absolute;\n  left: 50%;\n  z-index: 5000;\n  transform: translateX(-50%);\n  pointer-events: none;\n}\n.tt-toggle:hover::after {\n  content: attr(data-tip);\n  top: calc(100% + 11px);\n  padding: 5px 8px;\n  border-radius: 6px;\n  background: #fff;\n  color: #0e0e10;\n  font-size: 14px;\n  font-weight: 600;\n  line-height: 1.2;\n  white-space: nowrap;\n}\n.tt-toggle:hover::before {\n  content: \"\";\n  top: calc(100% + 1px);\n  border: 5px solid transparent;\n  border-bottom-color: #fff;\n}\n\n/* Loading spinner over the rewound video, like Twitch's */\n.tt-spinner {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  box-sizing: border-box;\n  width: 28px;\n  height: 28px;\n  margin: -14px 0 0 -14px;\n  border: 2.5px solid #28282d;\n  border-right-color: #fff;\n  border-radius: 50%;\n  animation: tt-spin 0.8s linear infinite;\n  pointer-events: none;\n}\n@keyframes tt-spin { to { transform: rotate(360deg); } }\n\n.tt-video {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n  background: #000;\n}\n";
+style.textContent = "/* Lives in the player overlay, not inside Twitch's controls: a channel's\n   Twitch Extension overlay (an iframe over the video) would cover it there\n   and take its clicks. z-index 1 puts it above that iframe. */\n.tt-bar {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: 40px; /* line sits on the 50px controls' top edge, like Twitch's */\n  z-index: 1;\n  padding: 0 16px 4px;\n  color: #fff;\n  font-family: inherit;\n  opacity: 0;\n  pointer-events: none;\n  transition: opacity 0.2s;\n}\n/* Shown with Twitch's controls. An extension iframe hides mouse movement\n   from Twitch, so on those channels it shows while the player is hovered. */\n.video-player__default-player:not(.video-player__inactive) .tt-bar,\n.video-player:hover:has(.extension-view__iframe) .tt-bar,\n.tt-bar:hover {\n  opacity: 1;\n  pointer-events: auto;\n}\n\n.tt-row {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  height: 19px;\n  margin-bottom: 3px;\n}\n\n.tt-time,\n.tt-tip {\n  font-size: 14px;\n  font-weight: 400;\n  line-height: 18px;\n  font-variant-numeric: tabular-nums;\n}\n.tt-time { text-shadow: 0 0 2px rgba(0, 0, 0, 0.4); }\n\n/* Hover time */\n.tt-tip {\n  padding: 0 6px;\n  border: 1px solid rgba(255, 255, 255, 0.15);\n  border-radius: 6px;\n  background: rgba(0, 0, 0, 0.55);\n  text-shadow: none;\n}\n.tt-tip {\n  display: none;\n  position: absolute;\n  top: 0;\n  transform: translateX(-50%);\n  white-space: nowrap;\n  pointer-events: none;\n}\n.tt-bar:has(.tt-track-wrap:hover) .tt-tip { display: block; }\n\n.tt-live {\n  position: relative;\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  height: 19px;\n  border: 0;\n  border-radius: 5px;\n  padding: 0 6px;\n  background: #eb0400;\n  color: #fff;\n  font-family: inherit;\n  font-size: 13px;\n  font-weight: 600;\n  line-height: 1;\n  cursor: default;\n}\n.tt-live svg { display: none; }\n\n.tt-track-wrap {\n  display: flex;\n  align-items: center;\n  height: 14px;\n  cursor: pointer;\n}\n.tt-track {\n  position: relative;\n  flex: 1;\n  height: 4px;\n  border-radius: 2px;\n  background: rgba(255, 255, 255, 0.3);\n}\n.tt-fill {\n  height: 100%;\n  border-radius: 2px;\n  background: #a970ff;\n}\n.tt-knob {\n  display: none;\n  position: absolute;\n  top: 50%;\n  width: 14px;\n  height: 14px;\n  border-radius: 50%;\n  background: #fff;\n  transform: translate(-50%, -50%);\n}\n.tt-track-wrap:hover .tt-knob { display: block; }\n/* Sits inside the track's right end so the track keeps the same width in\n   both modes; otherwise the first click from live lands off by its width. */\n.tt-dot {\n  display: none;\n  position: absolute;\n  top: 50%;\n  right: 0;\n  transform: translateY(-50%);\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  background: #eb0400;\n}\n\n/* Behind live */\n.tt-dvr .tt-live {\n  gap: 8px;\n  padding: 0 7px 0 4px;\n  border-radius: 4px;\n  background: #323239;\n  color: #efeff1;\n  font-weight: 700;\n  cursor: pointer;\n}\n.tt-dvr .tt-live svg { display: block; }\n.tt-dvr .tt-dot { display: block; }\n.tt-dvr .tt-track { background: linear-gradient(to right, rgba(255, 255, 255, 0.3) calc(100% - 16px), transparent 0); }\n\n.tt-dvr .tt-live:hover::after,\n.tt-dvr .tt-live:hover::before {\n  content: \"\";\n  position: absolute;\n  pointer-events: none;\n}\n/* Right-aligned to the button so it can't run off the player's edge */\n.tt-dvr .tt-live:hover::after {\n  content: attr(data-tip);\n  right: 0;\n  bottom: calc(100% + 9px);\n  padding: 4px 8px;\n  border-radius: 4px;\n  background: #fff;\n  color: #0e0e10;\n  font-size: 13px;\n  font-weight: 600;\n  line-height: 1.2;\n  letter-spacing: 0;\n  white-space: nowrap;\n}\n.tt-dvr .tt-live:hover::before {\n  left: 50%;\n  bottom: calc(100% + 1px);\n  transform: translateX(-50%);\n  border: 4px solid transparent;\n  border-top-color: #fff;\n}\n\n/* \"Chat is Live\" notice */\n.tt-notice {\n  margin-bottom: -5px; /* tucked under the message box, which sits above it */\n  border: 1px solid #3c3c44;\n  border-radius: 8px;\n  padding: 7px 10px 9px 9px;\n  background: #26262c;\n  color: #d3d3d9;\n  font-size: 15px;\n  line-height: 20px;\n}\n.tt-notice.tt-open {\n  border-color: #34343c;\n  background: #18181b;\n  color: #efeff1;\n  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);\n}\n.tt-notice-head {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.tt-notice button {\n  display: flex;\n  border: 0;\n  padding: 0;\n  background: none;\n  color: inherit;\n  cursor: pointer;\n}\n.tt-open .tt-notice-info { color: #0e9bd8; cursor: default; }\n.tt-notice-title { flex: 1; font-weight: 700; }\n.tt-notice-close,\n.tt-notice-body { display: none !important; }\n.tt-open .tt-notice-close { display: flex !important; }\n.tt-open .tt-notice-body { display: block !important; }\n.tt-notice-body { margin: 4px 0 7px 30px; }\n.tt-notice-link { color: #bf94ff; text-decoration: underline; }\n.tt-notice-link:hover { color: #d1b3ff; }\n\n/* Top-nav on/off toggle, sized like Twitch's own nav icons */\n.tt-toggle {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  width: 32px;\n  height: 32px;\n  margin: 0 4px;\n  border: 0;\n  border-radius: 50%;\n  padding: 0;\n  background: none;\n  color: #efeff1;\n  cursor: pointer;\n}\n.tt-toggle:hover { background: rgba(83, 83, 95, 0.48); }\n.tt-toggle .tt-slash { display: none; }\n.tt-toggle.tt-off { color: #adadb8; }\n.tt-toggle.tt-off .tt-slash { display: inline; }\n/* Tooltip measured off Twitch's own nav tooltips: 14px semibold, 5px arrow */\n.tt-toggle:hover::after,\n.tt-toggle:hover::before {\n  position: absolute;\n  left: 50%;\n  z-index: 5000;\n  transform: translateX(-50%);\n  pointer-events: none;\n}\n.tt-toggle:hover::after {\n  content: attr(data-tip);\n  top: calc(100% + 11px);\n  padding: 5px 8px;\n  border-radius: 6px;\n  background: #fff;\n  color: #0e0e10;\n  font-size: 14px;\n  font-weight: 600;\n  line-height: 1.2;\n  white-space: nowrap;\n}\n.tt-toggle:hover::before {\n  content: \"\";\n  top: calc(100% + 1px);\n  border: 5px solid transparent;\n  border-bottom-color: #fff;\n}\n\n/* While rewound, Twitch's live video is paused, so its play button shows\n   \"play\" even while the rewound video plays: draw Twitch's pause icon. */\n.tt-playing [data-a-target=\"player-play-pause-button\"] svg { visibility: hidden; }\n.tt-playing [data-a-target=\"player-play-pause-button\"]::after {\n  content: \"\";\n  position: absolute;\n  inset: 0;\n  margin: auto;\n  width: 24px;\n  height: 24px;\n  background: currentColor;\n  -webkit-mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4H5v16h5V4Zm9 0h-5v16h5V4Z'/%3E%3C/svg%3E\") center / 24px no-repeat;\n  mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4H5v16h5V4Zm9 0h-5v16h5V4Z'/%3E%3C/svg%3E\") center / 24px no-repeat;\n  pointer-events: none;\n}\n\n/* Loading spinner over the rewound video, like Twitch's */\n.tt-spinner {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  box-sizing: border-box;\n  width: 28px;\n  height: 28px;\n  margin: -14px 0 0 -14px;\n  border: 2.5px solid #28282d;\n  border-right-color: #fff;\n  border-radius: 50%;\n  animation: tt-spin 0.8s linear infinite;\n  pointer-events: none;\n}\n@keyframes tt-spin { to { transform: rotate(360deg); } }\n\n.tt-video {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n  background: #000;\n}\n";
 document.head.append(style);
 
 // Twitch's own public web client id, same one twitch.tv uses.
@@ -216,18 +216,21 @@ function prepare() {
   pre = newVideo(src);
 }
 
-// Live audio is routed through a gain node so Twitch's own volume/mute
-// controls keep working (we mirror them) while the live feed is silent.
-function liveAudio(tv, on) {
-  if (!tv.ttGain) {
-    const ctx = new AudioContext();
-    tv.ttGain = ctx.createGain();
-    ctx.createMediaElementSource(tv).connect(tv.ttGain).connect(ctx.destination);
-    tv.addEventListener('play', () => dvr?.play());
-    tv.addEventListener('pause', () => dvr?.pause());
+// While rewound, Twitch's live video is paused, so it stops playing and
+// loading. Twitch's play/pause controls (button, clicking the video, space/k)
+// then call play() on it: that toggles the rewound video instead and the live
+// one is paused again. Its volume and mute are mirrored onto the rewound video.
+function holdLive(tv) {
+  if (!tv.ttHooked) {
+    tv.ttHooked = true;
+    tv.addEventListener('play', () => {
+      if (!dvr) return;
+      tv.pause();
+      dvr.paused ? dvr.play().catch(() => {}) : dvr.pause();
+    });
     tv.addEventListener('volumechange', () => dvr && Object.assign(dvr, { volume: tv.volume, muted: tv.muted }));
   }
-  tv.ttGain.gain.value = on ? 1 : 0;
+  tv.pause();
 }
 
 function seek(f) {
@@ -235,13 +238,14 @@ function seek(f) {
   const target = f * uptime();
   if (!dvr) {
     const tv = twitchVideo();
+    const playing = !tv.paused;
     prepare();
     dvr = pre || newVideo(qualityUrl(), target);
     pre = null;
     Object.assign(dvr, { volume: tv.volume, muted: tv.muted });
     tv.after(dvr);
-    liveAudio(tv, false);
-    if (!tv.paused) dvr.play().catch(() => {});
+    holdLive(tv);
+    if (playing) dvr.play().catch(() => {});
   }
   // Seeking right after src is set is fastest in Safari. The VOD trails the
   // live edge a little, so clamp to what's available.
@@ -258,8 +262,8 @@ function goLive() {
   spinner.remove();
   pre = dvr; // keep it loaded so the next rewind is instant
   dvr = watched = null;
-  const tv = twitchVideo();
-  if (tv?.ttGain) liveAudio(tv, true);
+  document.documentElement.classList.remove('tt-playing');
+  twitchVideo()?.play().catch(() => {});
 }
 
 function tick() {
@@ -292,6 +296,11 @@ function tick() {
     notice.classList.remove('tt-open');
   } else if (notice.parentElement !== input) input.prepend(notice);
   if (dvr) {
+    // Keep live held, also if Twitch swaps in a new video element
+    const tv = twitchVideo();
+    if (tv && (!tv.ttHooked || !tv.paused)) holdLive(tv);
+    // Twitch's button shows "play" since live is paused; show the rewound video's state
+    document.documentElement.classList.toggle('tt-playing', !dvr.paused);
     // Quality changed in Twitch's settings: same spot, new variant
     const src = qualityUrl();
     if (src !== dvr.ttSrc) {

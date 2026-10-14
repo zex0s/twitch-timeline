@@ -252,6 +252,22 @@
   border-bottom-color: #fff;
 }
 
+/* While rewound, Twitch's live video is paused, so its play button shows
+   "play" even while the rewound video plays: draw Twitch's pause icon. */
+.tt-playing [data-a-target="player-play-pause-button"] svg { visibility: hidden; }
+.tt-playing [data-a-target="player-play-pause-button"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 24px;
+  height: 24px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4H5v16h5V4Zm9 0h-5v16h5V4Z'/%3E%3C/svg%3E") center / 24px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4H5v16h5V4Zm9 0h-5v16h5V4Z'/%3E%3C/svg%3E") center / 24px no-repeat;
+  pointer-events: none;
+}
+
 /* Loading spinner over the rewound video, like Twitch's */
 .tt-spinner {
   position: absolute;
