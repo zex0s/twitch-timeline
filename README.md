@@ -9,7 +9,7 @@ This replicates the rewind timeline bar Twitch gives subscribers on live streams
 - "Chat is Live" notice above the chat box while you're behind, with a link back to live
 - Per-channel on/off toggle in Twitch's top bar
 
-Needs the streamer to have VODs (past broadcasts) on; sub-only VODs won't play.
+Needs the streamer to have VODs (past broadcasts) on. On streams without a playable VOD (VODs off, or sub-only) the bar and toggle don't appear.
 
 ## Userscript (Tampermonkey, Violentmonkey…)
 

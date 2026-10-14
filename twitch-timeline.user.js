@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch Timeline
 // @namespace    https://github.com/zex0s/twitch-timeline
-// @version      1.0.2
+// @version      1.0.3
 // @description  Rewind live Twitch streams: a timeline under the player, Skip to Live, and a "Chat is Live" notice.
 // @author       zex0s
 // @match        https://www.twitch.tv/*
@@ -132,10 +132,14 @@ async function load(name) {
   ).catch(() => null))?.videoPlaybackAccessToken;
   // The in-progress VOD is an EVENT playlist that keeps growing.
   if (name !== channel || !t) return;
-  vodUrl = `https://usher.ttvnw.net/vod/${id}.m3u8?` + new URLSearchParams({ sig: t.signature, token: t.value, allow_source: 'true' });
+  const url = `https://usher.ttvnw.net/vod/${id}.m3u8?` + new URLSearchParams({ sig: t.signature, token: t.value, allow_source: 'true' });
+  // Refused for sub-only VODs: then there's nothing to play and no bar
+  const playlist = await fetch(url).then(r => r.ok ? r.text() : '').catch(() => '');
+  if (name !== channel || !playlist.startsWith('#EXTM3U')) return;
+  vodUrl = url;
   // Quality variants, best first, known by group ID ("720p60", "chunked") and
   // name ("1080p60"): Twitch saves its quality setting as one or the other.
-  const lines = (await fetch(vodUrl).then(r => r.text()).catch(() => '')).split('\n');
+  const lines = playlist.split('\n');
   const names = {};
   for (const l of lines) {
     const m = l.match(/^#EXT-X-MEDIA:.*GROUP-ID="([^"]+)".*NAME="([^"]+)"/);
@@ -275,9 +279,9 @@ function tick() {
     startedAt = vodUrl = variants = pre = watched = null;
     load(name);
   }
-  // Leftmost of the top nav's right-hand icons, on live channels only
+  // Leftmost of the top nav's right-hand icons, on live channels with VODs only
   const nav = document.querySelector('.top-nav__menu > :last-child');
-  if (!startedAt || !nav) toggle.remove();
+  if (!vodUrl || !nav) toggle.remove();
   else if (toggle.parentElement !== nav) nav.prepend(toggle);
   const enabled = !off.has(channel);
   toggle.classList.toggle('tt-off', !enabled);
@@ -318,7 +322,8 @@ function tick() {
     else if (spinner.previousSibling !== dvr) dvr.after(spinner);
   } else if (startedAt && (watched == null || !twitchVideo()?.paused)) watched = uptime();
   const overlay = [...document.querySelectorAll('.video-player .video-player__overlay')].find(o => o.offsetHeight);
-  if (!startedAt || !overlay) return bar.remove();
+  // No VOD (VODs off, or sub-only): nothing to rewind, so no bar
+  if (!vodUrl || !overlay) return bar.remove();
   if (bar.parentElement !== overlay) overlay.append(bar);
   bar.classList.toggle('tt-dvr', !!dvr);
   time.textContent = fmt(watched, true);
